@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -10,12 +11,14 @@ namespace _3D_Custom_Window
     public static class Window
     {
 
+        private static WndProc wndProcDelegate;
+
         // Import user32.dll (containing the function we need) and define
         // the method corresponding to the native function.
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr CreateWindowEx(
             WindowStylesEx dwExStyle, 
-            string lpClassName, 
+            UInt16 lpClassName, 
             string lpWindowName,
             WindowStyles dwStyle,
             int X,
@@ -43,10 +46,64 @@ namespace _3D_Custom_Window
         [DllImport("gdi32.dll")]
         public static extern IntPtr GetStockObject(StockObjects fnObject);
 
+        [DllImport("user32.dll")]
+        public static extern void PostQuitMessage(int nExitCode);
 
 
 
+        // I'M gonna be pissed if this works
+        // these were needed for the window to be created properly
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ShowWindow(IntPtr hWnd, ShowWindowCommands nCmdShow);
+
+        [DllImport("user32.dll")]
+        public static extern bool UpdateWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr DispatchMessage([In] ref MSG lpmsg);
+        [DllImport("user32.dll")]
+        public static extern bool TranslateMessage([In] ref MSG lpMsg);
+        [DllImport("user32.dll")]
+        public static extern sbyte GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin,
+           uint wMsgFilterMax);
+
+
+   
+        //typedef struct tagMSG {  
+        //  HWND   hwnd;  
+        //  UINT   message;  
+        //  WPARAM wParam;  
+        //  LPARAM lParam;  
+        //  DWORD  time;  
+        //  POINT  pt;  
+        //} MSG, *PMSG, *LPMSG;  
+
+        // MSG structure   
+        // http://msdn.microsoft.com/en-us/library/windows/desktop/ms644958(v=vs.85).aspx  
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+        public struct MSG
+        {
+            public IntPtr hwnd;
+            public UInt32 message;
+            public UIntPtr wParam;
+            public UIntPtr lParam;
+            public UInt32 time;
+            public POINT pt;
+        }
+
+        // PONIT Structure  
+        //  http://msdn.microsoft.com/en-us/library/windows/desktop/dd162805(v=vs.85).aspx  
+        //typedef struct tagPOINT {  
+        //  LONG x;  
+        //  LONG y;  
+        //} POINT, *PPOINT;  
+        public struct POINT
+        {
+            public Int32 x;
+            public Int32 Y;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct WNDCLASS
@@ -362,6 +419,82 @@ namespace _3D_Custom_Window
             /// <summary>The window has a vertical scroll bar.</summary>  
             WS_VSCROLL = 0x200000
         }
+
+        // the ShowWindowCommands enum, which feeds to the call ShowWindow, dictate how the window will be displayed. 
+        // http://www.pinvoke.net/default.aspx/Enums/ShowWindowCommand.html  
+        public enum ShowWindowCommands : int
+        {
+            /// <summary>  
+            /// Hides the window and activates another window.  
+            /// </summary>  
+            Hide = 0,
+            /// <summary>  
+            /// Activates and displays a window. If the window is minimized or   
+            /// maximized, the system restores it to its original size and position.  
+            /// An application should specify this flag when displaying the window   
+            /// for the first time.  
+            /// </summary>  
+            Normal = 1,
+            /// <summary>  
+            /// Activates the window and displays it as a minimized window.  
+            /// </summary>  
+            ShowMinimized = 2,
+            /// <summary>  
+            /// Maximizes the specified window.  
+            /// </summary>  
+            Maximize = 3, // is this the right value?  
+            /// <summary>  
+            /// Activates the window and displays it as a maximized window.  
+            /// </summary>         
+            ShowMaximized = 3,
+            /// <summary>  
+            /// Displays a window in its most recent size and position. This value   
+            /// is similar to <see cref="Win32.ShowWindowCommand.Normal"/>, except   
+            /// the window is not activated.  
+            /// </summary>  
+            ShowNoActivate = 4,
+            /// <summary>  
+            /// Activates the window and displays it in its current size and position.   
+            /// </summary>  
+            Show = 5,
+            /// <summary>  
+            /// Minimizes the specified window and activates the next top-level   
+            /// window in the Z order.  
+            /// </summary>  
+            Minimize = 6,
+            /// <summary>  
+            /// Displays the window as a minimized window. This value is similar to  
+            /// <see cref="Win32.ShowWindowCommand.ShowMinimized"/>, except the   
+            /// window is not activated.  
+            /// </summary>  
+            ShowMinNoActive = 7,
+            /// <summary>  
+            /// Displays the window in its current size and position. This value is   
+            /// similar to <see cref="Win32.ShowWindowCommand.Show"/>, except the   
+            /// window is not activated.  
+            /// </summary>  
+            ShowNA = 8,
+            /// <summary>  
+            /// Activates and displays the window. If the window is minimized or   
+            /// maximized, the system restores it to its original size and position.   
+            /// An application should specify this flag when restoring a minimized window.  
+            /// </summary>  
+            Restore = 9,
+            /// <summary>  
+            /// Sets the show state based on the SW_* value specified in the   
+            /// STARTUPINFO structure passed to the CreateProcess function by the   
+            /// program that started the application.  
+            /// </summary>  
+            ShowDefault = 10,
+            /// <summary>  
+            ///  <b>Windows 2000/XP:</b> Minimizes a window, even if the thread   
+            /// that owns the window is not responding. This flag should only be   
+            /// used when minimizing windows from a different thread.  
+            /// </summary>  
+            ForceMinimize = 11
+        }
+
+
 
 
         // Different Cursors available by default
@@ -1356,30 +1489,53 @@ namespace _3D_Custom_Window
             wndClass.style = (int)(ClassStyles.HorizontalRedraw | ClassStyles.VerticalRedraw);
 
             // Starting the Window procedure
-            wndClass.lpfnWndProc = Marshal.GetFunctionPointerForDelegate((WndProc)((hWnd, message, wParam, lParam) =>
+            wndProcDelegate = (hWnd, message, wParam, lParam) =>
             {
 
                 switch ((WM)message)
                 {
                     case WM.DESTROY:
-                        break;
+                        PostQuitMessage(0);
+                        return IntPtr.Zero;
                 }
 
                 return DefWindowProc(hWnd, (WM)message, wParam, lParam);
-            }
-            ));
+            };
+            wndClass.lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProcDelegate);
+            Console.WriteLine("Window Procedure: " + wndClass.lpfnWndProc);
             wndClass.cbClsExtra = 0;
             wndClass.cbWndExtra = 0;
             wndClass.hInstance = hInstance;
-            wndClass.hIcon = LoadIcon(IntPtr.Zero, new IntPtr((int)SystemIcons.Application.Handle));
+            wndClass.hIcon = IntPtr.Zero;
             wndClass.hCursor = LoadCursor(IntPtr.Zero, (int)Win32_IDC_Constants.IDC_ARROW);
             wndClass.hbrBackground = GetStockObject(StockObjects.WHITE_BRUSH);
             wndClass.lpszMenuName = null;
             wndClass.lpszClassName = "3D window";
 
             UInt16 regRest = RegisterClassEx(ref wndClass);
+            Console.WriteLine("Is the window register? \n" + regRest);
 
-            CreateWindowEx(windowBehavior, "3D window", "3D Custom Window", WindowStyles.WS_OVERLAPPEDWINDOW, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+            IntPtr hwnd = CreateWindowEx(windowBehavior, regRest, "3D Custom Window", WindowStyles.WS_OVERLAPPEDWINDOW, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+            
+            if (hwnd == IntPtr.Zero)
+            {
+                int lastError = Marshal.GetLastWin32Error();
+                string errorMessage = new Win32Exception(lastError).Message;
+                Console.WriteLine($"Failed to create window. Error {lastError}: {errorMessage}");
+            }
+            Console.WriteLine("Is the window created? \n" + hwnd );
+
+            ShowWindow(hwnd, ShowWindowCommands.Show);
+            UpdateWindow(hwnd);
+
+            // Message loop
+            MSG msg;
+            while (GetMessage(out msg, IntPtr.Zero, 0, 0) != 0)
+            {
+                TranslateMessage(ref msg);
+                DispatchMessage(ref msg);
+            }
+
         }
     }
 }
